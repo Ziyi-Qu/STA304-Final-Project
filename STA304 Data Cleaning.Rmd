@@ -1,0 +1,201 @@
+---
+title: "STA304 Final Project Data Cleaning"
+author: "Ziyi Qu"
+date: "12/19/2020"
+output: pdf_document
+---
+
+library(janitor)
+library(tidyverse)
+library(broom)
+library(tableone)
+library(pROC)
+library(tables)
+#import the data
+raw_data <- read_csv("/Users/qzy/Desktop/STA304/FINAL/Bicycle Thefts.csv")
+
+reduced_data <- 
+  raw_data %>% 
+  select(Primary_Offence,
+         Bike_Colour,
+         Cost_of_Bike,
+         Neighbourhood,
+         Location_Type,
+         Bike_Type)
+
+#clean the data
+##convert variables' names into small letters, and rename binary variables with "if_stolen", 
+##"if_near_city_center", "if_dark_colour" and "if_popular_type".
+reduced_data <- reduced_data %>% 
+  clean_names() %>% 
+  rename(if_stolen = primary_offence,
+         if_near_city_center = neighbourhood,
+         if_dark_colour = bike_colour,
+         if_popular_type = bike_type)
+
+##use the data with cost of bike only above 0.
+##including bike cost of 0 makes no economic or scientific sense for analysis.
+reduced_data <- reduced_data %>% 
+  filter(cost_of_bike>0)
+
+#transform "if_stolen" into a binary variable with value of either 1 or 0.
+##use theft-related and break&enter offence as the outcome of interest("if_stolen") with value of "1",
+##all other offences as non-theft with value of "0".
+reduced_data <- reduced_data %>% 
+  mutate_at(vars(if_stolen), 
+            .funs = funs(ifelse(if_stolen=="THEFT FROM MOTOR VEHICLE OVER"|. 
+                                == "THEFT FROM MOTOR VEHICLE UNDER"|.== 
+                                  "THEFT OF MOTOR VEHICLE"|. == "THEFT OVER"|.==
+                                  "THEFT UNDER - BICYCLE"|. ==
+                                  "THEFT UNDER - SHOPLIFTING"|. ==
+                                  "THEFT FROM MAIL / BAG / KEY"|. =="THEFT OF EBIKE OVER $5000"
+                                |. =="THEFT OF EBIKE UNDER $5000" |. =="THEFT OVER - BICYCLE"|.
+                                =="B&E"|.=="B&E W'INTENT", 1, 0)))
+
+##divide all categories under "location_type" into three main sub-groups:
+##"residential" for places where people reside and live; 
+##"social" for both commercial(for-profit business) and non-commercial(not-for-profit public services) places;
+##"educational" for places providing with educational services.
+reduced_data <- reduced_data %>% 
+  mutate_at(vars(location_type), .funs = funs(case_when(
+    .=="Apartment (Rooming House, Condo)"~"residential",
+    .=="Bank And Other Financial Institutions (Money Mart, Tsx)"~"social",
+    .=="Bar / Restaurant"~"social",
+    .=="Commercial Dwelling Unit (Hotel, Motel, B & B, Short Term Rental)"~"residential",
+    .=="Construction Site (Warehouse, Trailer, Shed)"~"social",
+    .=="Convenience Stores"~"social",
+    .=="Dealership (Car, Motorcycle, Marine, Trailer, Etc.)"~"social",
+    .=="Gas Station (Self, Full, Attached Convenience)"~"social",
+    .=="Go Bus"~"social",
+    .=="Go Station"~"social",
+    .=="Go Station"~"social",
+    .=="Group Homes (Non-Profit, Halfway House, Social Agency)	"~"residential",
+    .=="Other Passenger Train"~"social",
+    .=="Other Passenger Train Station"~"social",
+    .=="Other Regional Transit System Vehicle"~"social",
+    .=="Pharmacy"~"social",
+    .=="Private Property Structure (Pool, Shed, Detached Garage)"~"residential",
+    .=="Retirement / Nursing Homes"~"residential",
+    .=="Retirement Home"~"residential",
+    .=="Ttc Admin Or Support Facility"~"social",
+    .=="Ttc Bus"~"social",
+    .=="Ttc Bus Stop / Shelter / Loop"~"social",
+    .=="Ttc Light Rail Transit Station"~"social",
+    .=="Ttc Street Car"~"social",
+    .=="Ttc Subway Train"~"social",
+    .=="Homeless Shelter / Mission"~"residential",
+    .=="Hospital / Institutions / Medical Facilities (Clinic, Dentist, Morgue)"~"social",
+    .=="Jails / Detention Centres"~"social",
+    .=="Open Areas (Lakes, Parks, Rivers)"~"social",
+    .=="Other Commercial / Corporate Places (For Profit, Warehouse, Corp. Bldg)"~"social",
+    .=="Other Non Commercial / Corporate Places (Non-Profit, Gov'T, Firehall)"~"social",
+    .=="Other Train Admin Or Support Facility"~"social",
+    .=="Other Train Tracks"~"social",
+    .=="Parking Lots (Apt., Commercial Or Non-Commercial)"~"residential",
+    .=="Police / Courts (Parole Board, Probation Office)"~"social",
+    .=="Private Property (Pool, Shed, Detached Garage)"~"residential",
+    .=="Religious Facilities (Synagogue, Church, Convent, Mosque)"~"social",
+    .=="Schools During Supervised Activity"~"educational",
+    .=="Schools During Un-Supervised Activity"~"educational",
+    .=="Single Home, House (Attach Garage, Cottage, Mobile)"~"residential",
+    .=="Streets, Roads, Highways (Bicycle Path, Private Road)"~"social",
+    .=="Ttc Subway Station"~"social",
+    .=="Universities / Colleges"~"educational"
+  )))
+
+##transform "if_near_city_center" into a binary variable with value of either "1" or "0".
+##divide several dorminant categories under "if_near_city_center" into two groups:
+##mutate places within 10 kilometers of the Toronto City Hall(the very city center) with value "1".
+##mutate places of 10 kilometers away from the Toronto City Hall(the very city center) with value "0".
+reduced_data <- reduced_data %>% 
+  mutate_at(vars(if_near_city_center), .funs = funs(case_when(
+    .=="Alderwood (20)"~0,
+    .=="Church-Yonge Corridor (75)"~1,
+    .=="Black Creek (24)"~0,
+    .=="Dovercourt-Wallace Emerson-Junction (93)"~1,
+    .=="Downsview-Roding-CFB (26)"~0,
+    .=="East End-Danforth (62)"~1,
+    .=="Etobicoke West Mall (13)"~0,
+    .=="High Park North (88)"~0,
+    .=="Highland Creek (134)"~0,
+    .=="Leaside-Bennington (56)"~1,
+    .=="Little Portugal (84)"~1,
+    .=="Mount Olive-Silverstone-Jamestown (2)"~0,
+    .=="Playter Estates-Danforth (67)"~1,
+    .=="Roncesvalles (86)"~1,
+    .=="Rouge (131)"~0,
+    .=="Runnymede-Bloor West Village (89)"~0,
+    .=="The Beaches (63)"~1,
+    .=="Yonge-Eglinton (100)"~1,
+    .=="Waterfront Communities-The Island (77)"~1
+  )))
+
+##transform "if_dark_colour" into a binary variable with value of either 1 or 0.
+##divide several dorminant categories under "if_ark_colour" into two groups:
+##mutate dark colors (associated with  with black, gray, brown) with "1".
+##mutate bright colors (associated with anything expcept dark color conditions, such as red, yellow and white) with "0".
+reduced_data <- reduced_data %>% 
+  mutate_at(vars(if_dark_colour), .funs = funs(case_when(
+    .=="BLK"~1,
+    .=="BLKBLU"~1,
+    .=="BLKGRY"~1,
+    .=="BLKRED"~1,
+    .=="BLKSIL"~1,
+    .=="BLKTRQ"~1,
+    .=="BLKONG"~1,
+    .=="BLU"~0,
+    .=="BLUGRN"~0,
+    .=="BLUBLK"~1,
+    .=="BRN"~1,
+    .=="BRZ"~1,
+    .=="CRM"~0,
+    .=="DBL"~1,
+    .=="LBL"~0,
+    .=="DGR"~1,
+    .=="LGR"~0,
+    .=="MRN"~0,
+    .=="GRNBRN"~1,
+    .=="GRNGRY"~1,
+    .=="GRY"~1,
+    .=="GRYWHI"~0,
+    .=="GLD"~0,
+    .=="ONG"~0,
+    .=="PLE"~0,
+    .=="PLEGRY"~1,
+    .=="PNKPLE"~0,
+    .=="RED"~0,
+    .=="REDGRY"~1,
+    .=="REDWHI"~0,
+    .=="SIL"~0,
+    .=="YEL"~0,
+    .=="WHI"~0
+  )))
+
+##mutate popular bike types(Mountain bikes, Road bikes, Touring bikes, Trail bikes 
+##and BMX bikes) with value "1", with all other less common types value "0".
+reduced_data <- reduced_data %>% 
+  mutate_at(vars(if_popular_type), 
+            .funs = funs(ifelse(if_popular_type=="MT"|. =="TO"|. =="TR" |.=="RC"|. =="BM"|. =="RG", 1, 0)))
+
+##omit data with any "N/A" information.
+reduced_data <- na.omit(reduced_data)
+
+##transform the numeric binary variables:"if_stolen","if_near_city_center","if_dark_colour", "if_popular_type" into factors.
+##transform the numeric variable "cost_of_bike" into integer.
+reduced_data$if_stolen <- 
+  as.factor(reduced_data$if_stolen)
+
+reduced_data$if_near_city_center <- 
+  as.factor(reduced_data$if_near_city_center)
+
+reduced_data$if_dark_colour <- 
+  as.factor(reduced_data$if_dark_colour)
+
+reduced_data$bike_type <- 
+  as.factor(reduced_data$if_popular_type)
+
+reduced_data$cost_of_bike <- 
+  as.integer(reduced_data$cost_of_bike)
+
+# Saving the census data as a csv file in my working directory
+write_csv(reduced_data, "reduced_bicycle_thefts_data.csv")
